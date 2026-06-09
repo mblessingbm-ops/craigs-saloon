@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Offline — Craig's Saloon</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100dvh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 14px;
+        background: radial-gradient(120% 90% at 50% 0%, #221c12, #16130d);
+        font-family: -apple-system, system-ui, sans-serif;
+        color: #f3ebe3;
+        text-align: center;
+        padding: 24px;
+      }
+      .mark {
+        width: 72px;
+        height: 72px;
+        border-radius: 22px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-family: Georgia, serif;
+        font-weight: 600;
+        font-size: 40px;
+        color: #1a1610;
+        background: linear-gradient(135deg, #e6c98c, #c9a06c);
+      }
+      h1 { font-family: Georgia, serif; font-weight: 600; font-size: 26px; margin: 6px 0 0; }
+      p { color: #b7ab9c; font-size: 14px; max-width: 280px; line-height: 1.5; margin: 0; }
+      button {
+        margin-top: 8px;
+        border: 0;
+        background: #b0855b;
+        color: #fff;
+        font-weight: 700;
+        font-size: 15px;
+        padding: 13px 22px;
+        border-radius: 12px;
+        cursor: pointer;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="mark">C</div>
+    <h1>You're offline</h1>
+    <p>Craig's Saloon needs a connection for live franchise data. Reconnect and try again.</p>
+    <button onclick="location.reload()">Retry</button>
+  </body>
+</html>
