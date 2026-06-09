@@ -8,8 +8,13 @@ export const dynamic = "force-dynamic";
 function verifySignature(raw: string, signature: string | null): boolean {
   const secret = process.env.WHATSAPP_APP_SECRET;
   if (!secret) {
-    console.warn("[whatsapp] WHATSAPP_APP_SECRET not set — skipping signature check");
-    return true; // dev: allow
+    if (process.env.NODE_ENV === "production") {
+      // never fail-open in production — an unset secret would accept forged payloads
+      console.error("[whatsapp] WHATSAPP_APP_SECRET missing in production — rejecting inbound");
+      return false;
+    }
+    console.warn("[whatsapp] WHATSAPP_APP_SECRET not set — skipping signature check (dev only)");
+    return true;
   }
   if (!signature) return false;
   const expected = "sha256=" + crypto.createHmac("sha256", secret).update(raw).digest("hex");

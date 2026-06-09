@@ -52,6 +52,9 @@ export function Diary({
   const [booking, setBooking] = useState(false);
   const [selected, setSelected] = useState<DiaryAppt | null>(null);
   const list = appts.filter((a) => room === "all" || a.roomId === room);
+  // owner's calendar spans all 4 saloons — label stations/appointments by saloon so they're distinguishable
+  const multiLoc = new Set(rooms.map((r) => r.location)).size > 1;
+  const roomLoc = new Map(rooms.map((r) => [r.id, r.location]));
 
   return (
     <>
@@ -74,7 +77,7 @@ export function Diary({
         {rooms.map((r) => (
           <button key={r.id} className="room-tab" data-on={room === r.id ? "1" : "0"} onClick={() => setRoom(r.id)}>
             <span className="ct" style={{ background: catDot[r.cat] ?? "var(--accent)" }} />
-            {r.name}
+            {multiLoc && r.location ? `${r.location} · ${r.name}` : r.name}
           </button>
         ))}
       </div>
@@ -104,6 +107,7 @@ export function Diary({
                   </span>
                   {a.therapistShort}
                 </span>
+                {multiLoc && roomLoc.get(a.roomId) && <span className="mini-course">{roomLoc.get(a.roomId)}</span>}
               </div>
             </div>
           </div>

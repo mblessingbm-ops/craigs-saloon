@@ -51,19 +51,24 @@ async function log(clientId: string | null, direction: "inbound" | "outbound", c
   });
 }
 
-/** Generate the next few bookable slots (10:00 & 14:00, next 5 days). */
+/** Generate the next few bookable slots (10:00 & 14:00, next 5 days), anchored to
+ *  the saloon's local day (Africa/Harare) regardless of the server timezone. */
 function nextSlots(): { iso: string; label: string }[] {
   const out: { iso: string; label: string }[] = [];
   const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
   const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  const base = new Date();
+  const harareKey = (dt: Date) => new Intl.DateTimeFormat("en-CA", { timeZone: "Africa/Harare" }).format(dt);
+  const todayKey = harareKey(new Date());
   for (let d = 1; d <= 5 && out.length < 8; d++) {
-    const day = new Date(base);
-    day.setDate(day.getDate() + d);
-    if (day.getDay() === 0) continue; // closed Sunday
+    const dt = new Date(`${todayKey}T12:00:00+02:00`);
+    dt.setUTCDate(dt.getUTCDate() + d);
+    const key = harareKey(dt);
+    const dow = new Date(`${key}T12:00:00+02:00`).getUTCDay();
+    if (dow === 0) continue; // closed Sunday
+    const dnum = Number(key.slice(8, 10));
+    const mnum = Number(key.slice(5, 7)) - 1;
     for (const t of ["10:00", "14:00"]) {
-      const iso = `${day.toISOString().slice(0, 10)}T${t}:00+02:00`;
-      out.push({ iso, label: `${days[day.getDay()]} ${day.getDate()} ${mon[day.getMonth()]} · ${t === "10:00" ? "10:00 AM" : "2:00 PM"}` });
+      out.push({ iso: `${key}T${t}:00+02:00`, label: `${days[dow]} ${dnum} ${mon[mnum]} · ${t === "10:00" ? "10:00 AM" : "2:00 PM"}` });
     }
   }
   return out.slice(0, 8);
@@ -88,8 +93,11 @@ async function createBooking(locationId: string, serviceId: string, iso: string,
     .eq("status", "active")
     .limit(1)
     .maybeSingle();
+  // No station for this service at this saloon → don't create a station-less
+  // "ghost" booking (it would dodge the overlap constraints). Decline instead.
+  if (!room) return null;
 
-  let therapistId = room?.assigned_therapist_id ?? null;
+  let therapistId = room.assigned_therapist_id ?? null;
   if (!therapistId) {
     const { data: tech } = await db
       .from("profiles")
@@ -129,7 +137,12 @@ export async function handleInbound(input: { from: string; name?: string; text?:
   const { from, name, text, replyId } = input;
   const db = createAdminClient();
   const client = await ensureClient(from, name);
-  const clientId = client?.id ?? null;
+  if (!client) {
+    // couldn't find or create the client record — don't proceed with a null id
+    await sendText(from, "Sorry, we hit a snag on our side. Please try again in a moment.");
+    return;
+  }
+  const clientId = client.id;
   await log(clientId, "inbound", replyId ?? text ?? "", "booking_flow");
 
   const welcome = async () => {
@@ -165,7 +178,7 @@ export async function handleInbound(input: { from: string; name?: string; text?:
       const { data: appts } = await db
         .from("appointments")
         .select("scheduled_start, services(name), locations(name)")
-        .eq("client_id", clientId!)
+        .eq("client_id", clientId)
         .gte("scheduled_start", new Date().toISOString())
         .order("scheduled_start")
         .limit(5);
@@ -228,7 +241,7 @@ export async function handleInbound(input: { from: string; name?: string; text?:
     // 6) confirmed → create the booking
     if (replyId.startsWith("confirm:")) {
       const { locId, serviceId, iso } = parseSel(replyId.slice(8));
-      const booking = await createBooking(locId, serviceId, iso, clientId!);
+      const booking = await createBooking(locId, serviceId, iso, clientId);
       if (booking) {
         await sendText(
           from,

@@ -129,10 +129,14 @@ export async function createAppointment(input: {
 
 /** Translate a Postgres exclusion-constraint violation into a friendly message. */
 function bookingError(error: { code?: string; message?: string }): string {
-  if (error.code === "23P01" || error.message?.includes("appointments_no_room_overlap")) {
+  const msg = error.message ?? "";
+  if (msg.includes("appointments_no_therapist_overlap")) {
+    return "That technician is already booked for an overlapping time. Pick another time or technician.";
+  }
+  if (error.code === "23P01" || msg.includes("appointments_no_room_overlap")) {
     return "That station is already booked for an overlapping time. Pick another time or station.";
   }
-  return error.message ?? "Could not save the appointment.";
+  return msg || "Could not save the appointment.";
 }
 
 /* ---------- Diary: reschedule (time / room) ---------- */
@@ -382,6 +386,15 @@ export async function saveStationReconciliation(input: {
     const amt = Number(a.amount_charged) || 0;
     systemTotal += amt;
     if (a.room_id) sysByStation.set(a.room_id, (sysByStation.get(a.room_id) ?? 0) + amt);
+  }
+
+  // every station that took money today must be counted — otherwise its takings
+  // could be silently dropped and the day closed "matched" with a hidden variance
+  const submitted = new Set(input.lines.map((l) => l.stationId));
+  for (const [stationId, sys] of sysByStation) {
+    if (sys > 0 && !submitted.has(stationId)) {
+      return { error: "Every station with takings must be counted before closing the day." };
+    }
   }
 
   // every station with a variance needs a resolution note

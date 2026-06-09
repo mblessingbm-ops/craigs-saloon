@@ -170,6 +170,7 @@ export interface DiaryRoom {
   id: string;
   name: string;
   cat: string;
+  location: string; // saloon short name — lets the owner tell stations apart across locations
 }
 export interface DiaryAppt {
   id: string;
@@ -193,7 +194,7 @@ export async function getDiary(): Promise<{ rooms: DiaryRoom[]; appts: DiaryAppt
   const end = dayStart(addDaysKey(tKey, 1)).toISOString();
 
   const [roomsRes, apptRes] = await Promise.all([
-    supabase.from("rooms").select("id, name, service_category").order("created_at"),
+    supabase.from("rooms").select("id, name, service_category, location_id, locations(name)").order("location_id").order("created_at"),
     supabase
       .from("appointments")
       .select(
@@ -208,6 +209,7 @@ export async function getDiary(): Promise<{ rooms: DiaryRoom[]; appts: DiaryAppt
     id: r.id,
     name: r.name,
     cat: r.service_category,
+    location: ((r.locations as { name?: string } | null)?.name ?? "").replace("Craig's Saloon — ", ""),
   }));
 
   const appts: DiaryAppt[] = (apptRes.data ?? []).map((a) => {
@@ -344,8 +346,9 @@ export interface StaffPerf {
 
 export async function getStaff(): Promise<StaffPerf[]> {
   const supabase = await createClient();
-  const now = new Date();
-  const monthStart = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1)).toISOString();
+  // first of the month anchored to the studio's local day (Africa/Harare), to
+  // match the dashboard's month range (a plain UTC boundary drops 00:00–02:00 on the 1st)
+  const monthStart = dayStart(`${localDateKey().slice(0, 7)}-01`).toISOString();
 
   const [profRes, apptRes] = await Promise.all([
     supabase.from("profiles").select("id, full_name, short_name, role, services_trained").neq("role", "client").order("full_name"),
