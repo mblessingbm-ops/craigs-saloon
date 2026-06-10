@@ -2,6 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendText, sendButtons, sendList } from "@/lib/whatsapp/send";
 import { normalizePhone } from "@/lib/format";
+import { slotError, asHours } from "@/lib/hours";
 import type { Database } from "@/lib/database.types";
 
 type Convo = Database["public"]["Enums"]["convo_state"];
@@ -80,10 +81,15 @@ function nextSlots(): { iso: string; label: string }[] {
 async function createBooking(locationId: string, serviceId: string, iso: string, clientId: string) {
   const db = createAdminClient();
   const [{ data: loc }, { data: svc }] = await Promise.all([
-    db.from("locations").select("name").eq("id", locationId).maybeSingle(),
+    db.from("locations").select("name, operating_hours").eq("id", locationId).maybeSingle(),
     db.from("services").select("category, duration_minutes, name").eq("id", serviceId).maybeSingle(),
   ]);
   if (!loc || !svc) return null;
+
+  // Respect the saloon's real opening hours (and never book a past slot), even
+  // though the proposed times are normally in-hours — operating_hours may be
+  // customised per location and confirmations can arrive late.
+  if (slotError(new Date(iso), asHours(loc.operating_hours), svc.duration_minutes ?? 30)) return null;
 
   const { data: room } = await db
     .from("rooms")

@@ -3,7 +3,8 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Icons } from "@/components/icons";
-import { fmtTime, money } from "@/lib/format";
+import { addDaysKey } from "@/lib/tz";
+import { fmtTime, fmtHHMM, money } from "@/lib/format";
 import { createAppointment, updateAppointmentStatus, rescheduleAppointment, cancelAppointment } from "@/lib/actions";
 import { Sheet } from "@/components/Sheet";
 import type { DiaryRoom, DiaryAppt, BookingOptions } from "@/lib/queries";
@@ -25,12 +26,16 @@ const catDot: Record<string, string> = {
   general: "#9d8d95",
 };
 
-const todayLabel = () =>
-  "Today · " +
-  new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Harare", weekday: "short", day: "numeric", month: "short" }).format(new Date());
+// Format a studio-local date key (YYYY-MM-DD) as "Wed 11 Jun".
+const dayLabel = (dateKey: string) =>
+  new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Harare", weekday: "short", day: "numeric", month: "short" }).format(
+    new Date(`${dateKey}T12:00:00+02:00`)
+  );
 
-const TIME_SLOTS = Array.from({ length: 19 }, (_, i) => {
-  const h = 9 + Math.floor(i / 2);
+// 08:00–18:30 grid spans every saloon's configured hours; the server still
+// validates each pick against that location's real opening hours.
+const TIME_SLOTS = Array.from({ length: 22 }, (_, i) => {
+  const h = 8 + Math.floor(i / 2);
   const m = i % 2 ? "30" : "00";
   return `${String(h).padStart(2, "0")}:${m}`;
 });
@@ -39,10 +44,14 @@ export function Diary({
   rooms,
   appts,
   options,
+  dateKey,
+  today,
 }: {
   rooms: DiaryRoom[];
   appts: DiaryAppt[];
   options: BookingOptions;
+  dateKey: string;
+  today: string;
 }) {
   const router = useRouter();
   const [room, setRoom] = useState("all");
@@ -52,11 +61,24 @@ export function Diary({
   // owner's calendar spans all 4 saloons — label stations/appointments by saloon so they're distinguishable
   const multiLoc = new Set(rooms.map((r) => r.location)).size > 1;
   const roomLoc = new Map(rooms.map((r) => [r.id, r.location]));
+  const isToday = dateKey === today;
+  const goToDay = (key: string) => router.push(key === today ? "/diary" : `/diary?date=${key}`);
 
   return (
     <>
       <div className="diary-daybar">
-        <div className="d">{todayLabel()}</div>
+        <button className="day-arrow" aria-label="Previous day" onClick={() => goToDay(addDaysKey(dateKey, -1))}>
+          <Icons.Chevron size={18} style={{ transform: "rotate(180deg)" }} />
+        </button>
+        <div className="d">{isToday ? `Today · ${dayLabel(dateKey)}` : dayLabel(dateKey)}</div>
+        <button className="day-arrow" aria-label="Next day" onClick={() => goToDay(addDaysKey(dateKey, 1))}>
+          <Icons.Chevron size={18} />
+        </button>
+        {!isToday && (
+          <button className="day-today" onClick={() => goToDay(today)}>
+            Today
+          </button>
+        )}
       </div>
 
       <div className="room-tabs">
@@ -75,7 +97,7 @@ export function Diary({
         <div className="tl-line" />
         {list.length === 0 && (
           <div className="faint" style={{ fontSize: 13, paddingTop: 8 }}>
-            No appointments {room === "all" ? "today" : "at this station"}.
+            No appointments {room === "all" ? (isToday ? "today" : "on this day") : "at this station"}.
           </div>
         )}
         {list.map((a) => (
@@ -111,6 +133,8 @@ export function Diary({
         <BookingSheet
           options={options}
           rooms={rooms}
+          dateKey={dateKey}
+          isToday={isToday}
           onClose={() => setBooking(false)}
           onDone={() => {
             setBooking(false);
@@ -123,6 +147,7 @@ export function Diary({
         <ApptSheet
           appt={selected}
           rooms={rooms}
+          dateKey={dateKey}
           onClose={() => setSelected(null)}
           onDone={() => {
             setSelected(null);
@@ -138,11 +163,15 @@ export function Diary({
 function BookingSheet({
   options,
   rooms,
+  dateKey,
+  isToday,
   onClose,
   onDone,
 }: {
   options: BookingOptions;
   rooms: DiaryRoom[];
+  dateKey: string;
+  isToday: boolean;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -156,7 +185,16 @@ function BookingSheet({
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
 
+  // a booking needs either an existing client, or a walk-in name + a plausible
+  // phone number (≥9 digits covers Zimbabwe mobile/landline formats)
+  const phoneDigits = newPhone.replace(/\D/g, "").length;
+  const walkInOk = !!clientId || (newName.trim().length >= 2 && phoneDigits >= 9);
+
   const submit = () => {
+    if (!walkInOk) {
+      setError("Enter the walk-in's name and a valid phone number.");
+      return;
+    }
     setError(null);
     startTransition(async () => {
       const res = await createAppointment({
@@ -167,6 +205,7 @@ function BookingSheet({
         newClientName: clientId ? undefined : newName,
         newClientPhone: clientId ? undefined : newPhone,
         time,
+        date: dateKey,
       });
       if (res.error) setError(res.error);
       else onDone();
@@ -176,7 +215,9 @@ function BookingSheet({
   return (
     <Sheet onClose={onClose}>
         <div className="sheet-title">New appointment</div>
-        <div className="sheet-sub">Quick-add a booking to today&apos;s calendar.</div>
+        <div className="sheet-sub">
+          {isToday ? "Quick-add a booking to today's calendar." : `Booking for ${dayLabel(dateKey)}.`}
+        </div>
 
         {error && <div className="login-error">{error}</div>}
 
@@ -253,7 +294,7 @@ function BookingSheet({
           <button className="btn-ghost" onClick={onClose}>
             Cancel
           </button>
-          <button className="btn-primary" onClick={submit} disabled={isPending}>
+          <button className="btn-primary" onClick={submit} disabled={isPending || !walkInOk}>
             {isPending ? "Booking…" : "Add to calendar"}
           </button>
         </div>
@@ -274,11 +315,13 @@ const NEXT: Record<string, { status: "checked_in" | "in_progress" | "completed";
 function ApptSheet({
   appt,
   rooms,
+  dateKey,
   onClose,
   onDone,
 }: {
   appt: DiaryAppt;
   rooms: DiaryRoom[];
+  dateKey: string;
   onClose: () => void;
   onDone: () => void;
 }) {
@@ -290,10 +333,11 @@ function ApptSheet({
   const [isPending, startTransition] = useTransition();
 
   const durationMin = Math.max(15, Math.round((new Date(appt.end).getTime() - new Date(appt.start).getTime()) / 60000));
-  const startHHMM = `${String(new Date(appt.start).getHours()).padStart(2, "0")}:${String(new Date(appt.start).getMinutes()).padStart(2, "0")}`;
+  const startHHMM = fmtHHMM(appt.start);
   const [reschedule, setReschedule] = useState(false);
   const [rTime, setRTime] = useState(TIME_SLOTS.includes(startHHMM) ? startHHMM : "10:00");
   const [rRoom, setRRoom] = useState(appt.roomId || rooms[0]?.id || "");
+  const [rDate, setRDate] = useState(dateKey);
   const [notes, setNotes] = useState("");
   const canModify = appt.status !== "completed" && appt.status !== "cancelled";
 
@@ -313,7 +357,7 @@ function ApptSheet({
   const doReschedule = () => {
     setError(null);
     startTransition(async () => {
-      const res = await rescheduleAppointment({ id: appt.id, time: rTime, roomId: rRoom, durationMin });
+      const res = await rescheduleAppointment({ id: appt.id, time: rTime, roomId: rRoom, durationMin, date: rDate });
       if (res.error) setError(res.error);
       else onDone();
     });
@@ -395,6 +439,10 @@ function ApptSheet({
 
         {reschedule && (
           <>
+            <div className="field">
+              <label>New date</label>
+              <input type="date" value={rDate} onChange={(e) => setRDate(e.target.value || dateKey)} />
+            </div>
             <div className="field">
               <label>New time</label>
               <select value={rTime} onChange={(e) => setRTime(e.target.value)}>

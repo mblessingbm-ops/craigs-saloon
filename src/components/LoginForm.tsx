@@ -8,7 +8,9 @@ import { createClient } from "@/lib/supabase/client";
 export function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const redirect = params.get("redirect") || "/";
+  // only follow internal paths — never an absolute/protocol-relative URL (open-redirect)
+  const rawRedirect = params.get("redirect") || "/";
+  const redirect = rawRedirect.startsWith("/") && !rawRedirect.startsWith("//") ? rawRedirect : "/";
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -27,6 +29,9 @@ export function LoginForm() {
     }
     router.replace(redirect);
     router.refresh();
+    // safety net: if the redirect bounces back to login (e.g. a not-yet-propagated
+    // session cookie), don't leave the button stuck on "Signing in…" forever
+    setTimeout(() => setLoading(false), 4000);
   };
 
   return (

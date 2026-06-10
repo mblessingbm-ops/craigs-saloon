@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import crypto from "node:crypto";
 import { handleInbound } from "@/lib/whatsapp/bot";
+import { rateLimit } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -71,6 +72,12 @@ export async function POST(req: NextRequest) {
               list_reply?: { id: string };
             };
           };
+          // throttle per sender: a flood of inbound would trigger paid outbound
+          // replies. Excess messages are dropped silently (no reply = no amplification).
+          if (!rateLimit(`wa:${msg.from}`, 8, 30_000)) {
+            console.warn("[whatsapp] rate-limited", msg.from);
+            continue;
+          }
           const replyId =
             msg.interactive?.button_reply?.id ?? msg.interactive?.list_reply?.id ?? undefined;
           const text = msg.text?.body;

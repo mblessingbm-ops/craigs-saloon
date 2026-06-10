@@ -1,3 +1,5 @@
+import { STUDIO_TZ } from "@/lib/tz";
+
 export const money = (n: number) => "$" + Math.round(Number(n)).toLocaleString("en-US");
 
 export const initials = (name: string) =>
@@ -55,7 +57,7 @@ export const PAYMENT_LABEL: Record<string, string> = {
  *  so times read correctly regardless of the viewer's device timezone. */
 export function fmtTime(iso: string): string {
   return new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Africa/Harare",
+    timeZone: STUDIO_TZ,
     hour: "numeric",
     minute: "2-digit",
     hour12: true,
@@ -63,4 +65,20 @@ export function fmtTime(iso: string): string {
     .format(new Date(iso))
     .replace(/\s/g, "")
     .toLowerCase();
+}
+
+/** 24-hour "HH:MM" in the studio's timezone — for prefilling time pickers so the
+ *  selection matches the viewer-independent studio wall-clock (never device-local). */
+export function fmtHHMM(iso: string): string {
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: STUDIO_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).format(new Date(iso));
+}
+
+/** Studio-local calendar date key (YYYY-MM-DD) of an ISO timestamp. */
+export function fmtDateKey(iso: string): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: STUDIO_TZ }).format(new Date(iso));
 }

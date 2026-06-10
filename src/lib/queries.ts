@@ -190,9 +190,11 @@ export interface DiaryAppt {
   price: number;
 }
 
-export async function getDiary(): Promise<{ rooms: DiaryRoom[]; appts: DiaryAppt[] }> {
+export async function getDiary(
+  dateKey?: string
+): Promise<{ rooms: DiaryRoom[]; appts: DiaryAppt[] }> {
   const supabase = await createClient();
-  const tKey = todayKey();
+  const tKey = dateKey && /^\d{4}-\d{2}-\d{2}$/.test(dateKey) ? dateKey : todayKey();
   const start = dayStart(tKey).toISOString();
   const end = dayStart(addDaysKey(tKey, 1)).toISOString();
 

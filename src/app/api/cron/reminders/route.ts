@@ -12,11 +12,11 @@ export const dynamic = "force-dynamic";
    text (only delivered to users inside the 24h customer-service window). */
 export async function GET(req: NextRequest) {
   // Accept the secret via query, custom header, or Vercel Cron's Authorization bearer.
+  // Header-only auth: Vercel Cron sends `Authorization: Bearer <CRON_SECRET>`.
+  // We deliberately do NOT read the secret from the query string — query params
+  // leak into access logs, referrers, and browser history.
   const auth = req.headers.get("authorization");
-  const secret =
-    req.nextUrl.searchParams.get("secret") ??
-    req.headers.get("x-cron-secret") ??
-    (auth?.startsWith("Bearer ") ? auth.slice(7) : null);
+  const secret = req.headers.get("x-cron-secret") ?? (auth?.startsWith("Bearer ") ? auth.slice(7) : null);
   if (!process.env.CRON_SECRET || secret !== process.env.CRON_SECRET) {
     return new NextResponse("Forbidden", { status: 403 });
   }

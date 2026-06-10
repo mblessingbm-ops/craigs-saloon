@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
 import type { TablesUpdate } from "@/lib/database.types";
 import { localDateKey, dayStart, addDaysKey, weekdayMon0 } from "@/lib/tz";
+import { slotError, asHours } from "@/lib/hours";
 import { normalizePhone } from "@/lib/format";
 import { sendText } from "@/lib/whatsapp/send";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -30,28 +31,6 @@ async function logAudit(
   }
 }
 
-/** Validate an appointment start against past-time + studio operating hours
- *  (Mon–Fri 09:00–18:00, Sat 09:00–15:00, closed Sun; Africa/Harare). */
-function slotError(start: Date): string | null {
-  if (start.getTime() < Date.now() - 60_000) return "That time is in the past.";
-  const parts = new Intl.DateTimeFormat("en-GB", {
-    timeZone: "Africa/Harare",
-    weekday: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    hour12: false,
-  }).formatToParts(start);
-  const wd = parts.find((p) => p.type === "weekday")?.value;
-  const h = Number(parts.find((p) => p.type === "hour")?.value);
-  const m = Number(parts.find((p) => p.type === "minute")?.value);
-  if (wd === "Sun") return "The studio is closed on Sundays.";
-  const close = wd === "Sat" ? 15 * 60 : 18 * 60;
-  const mins = h * 60 + m;
-  if (mins < 9 * 60 || mins >= close)
-    return `That time is outside opening hours (9:00–${wd === "Sat" ? "15:00" : "18:00"}).`;
-  return null;
-}
-
 /* ---------- Diary: create an appointment ---------- */
 export async function createAppointment(input: {
   serviceId: string;
@@ -61,6 +40,7 @@ export async function createAppointment(input: {
   newClientName?: string;
   newClientPhone?: string;
   time: string; // "HH:MM"
+  date?: string; // "YYYY-MM-DD" (studio-local); defaults to today
 }): Promise<{ error?: string }> {
   const supabase = await createClient();
   const {
@@ -70,8 +50,13 @@ export async function createAppointment(input: {
 
   // The appointment's location is the station's location — never assume "the
   // first location". (RLS also requires location_id to match the admin's saloon.)
-  const { data: room } = await supabase.from("rooms").select("location_id").eq("id", input.roomId).single();
+  const { data: room } = await supabase
+    .from("rooms")
+    .select("location_id, locations(operating_hours)")
+    .eq("id", input.roomId)
+    .single();
   if (!room) return { error: "Pick a station for this appointment." };
+  const hours = asHours((room.locations as { operating_hours?: unknown } | null)?.operating_hours);
 
   const { data: svc } = await supabase
     .from("services")
@@ -103,11 +88,11 @@ export async function createAppointment(input: {
   }
   if (!clientId) return { error: "Pick a client or enter a walk-in name and number" };
 
-  const tKey = localDateKey();
+  const tKey = input.date && /^\d{4}-\d{2}-\d{2}$/.test(input.date) ? input.date : localDateKey();
   const start = new Date(`${tKey}T${input.time}:00+02:00`);
   const end = new Date(start.getTime() + duration * 60000);
 
-  const se = slotError(start);
+  const se = slotError(start, hours, duration);
   if (se) return { error: se };
 
   const { error } = await supabase.from("appointments").insert({
@@ -145,12 +130,19 @@ export async function rescheduleAppointment(input: {
   time: string; // "HH:MM"
   roomId: string;
   durationMin: number;
+  date?: string; // "YYYY-MM-DD" (studio-local); defaults to today
 }): Promise<{ error?: string }> {
   const supabase = await createClient();
-  const tKey = localDateKey();
+  const { data: room } = await supabase
+    .from("rooms")
+    .select("locations(operating_hours)")
+    .eq("id", input.roomId)
+    .single();
+  const hours = asHours((room?.locations as { operating_hours?: unknown } | null)?.operating_hours);
+  const tKey = input.date && /^\d{4}-\d{2}-\d{2}$/.test(input.date) ? input.date : localDateKey();
   const start = new Date(`${tKey}T${input.time}:00+02:00`);
   const end = new Date(start.getTime() + input.durationMin * 60000);
-  const se = slotError(start);
+  const se = slotError(start, hours, input.durationMin);
   if (se) return { error: se };
   const { error } = await supabase
     .from("appointments")
@@ -377,16 +369,22 @@ export async function saveStationReconciliation(input: {
   // recompute system totals per station server-side (never trust the client)
   const { data: appts } = await supabase
     .from("appointments")
-    .select("amount_charged, room_id")
+    .select("amount_charged, room_id, payment_method")
     .eq("status", "completed")
     .eq("location_id", input.locationId)
     .gte("scheduled_start", start)
     .lt("scheduled_start", end);
   const sysByStation = new Map<string, number>();
   let systemTotal = 0;
+  // electronic methods (card / mobile money) auto-reconcile to the system figure;
+  // the physical till count is the cash drawer, so any variance lands on cash
+  let cardSystem = 0;
+  let mobileSystem = 0;
   for (const a of appts ?? []) {
     const amt = Number(a.amount_charged) || 0;
     systemTotal += amt;
+    if (a.payment_method === "card") cardSystem += amt;
+    else if (a.payment_method === "mobile_money") mobileSystem += amt;
     if (a.room_id) sysByStation.set(a.room_id, (sysByStation.get(a.room_id) ?? 0) + amt);
   }
 
@@ -418,9 +416,11 @@ export async function saveStationReconciliation(input: {
         service_total: systemTotal,
         retail_total: 0,
         system_total: systemTotal,
-        counted_cash: tillTotal,
-        counted_card: 0,
-        counted_mobile: 0,
+        // preserve the cash/card/mobile split: electronic at system value, the
+        // remainder (and any variance) attributed to the counted cash drawer
+        counted_cash: tillTotal - cardSystem - mobileSystem,
+        counted_card: cardSystem,
+        counted_mobile: mobileSystem,
         variance_status: allMatched ? "matched" : "resolved",
         confirmed_by: user.id,
         confirmed_at: new Date().toISOString(),
