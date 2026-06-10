@@ -49,6 +49,13 @@ export default function RootLayout({
           inject attributes onto <body> before React hydrates, and the theme
           provider sets data-theme on <body> post-mount. */}
       <body className={`${serif.variable} ${sans.variable}`} suppressHydrationWarning>
+        {/* set the theme before first paint to avoid a light→dark flash for dark-mode users */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html:
+              "(function(){try{var t=localStorage.getItem('ga_theme');if(t!=='light'&&t!=='dark'){t=matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light';}document.documentElement.setAttribute('data-theme',t);if(document.body)document.body.setAttribute('data-theme',t);}catch(e){}})();",
+          }}
+        />
         <ServiceWorkerRegister />
         <ThemeProvider>{children}</ThemeProvider>
       </body>

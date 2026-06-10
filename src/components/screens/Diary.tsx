@@ -25,12 +25,9 @@ const catDot: Record<string, string> = {
   general: "#9d8d95",
 };
 
-const todayLabel = () => {
-  const d = new Date();
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `Today · ${days[d.getDay()]} ${d.getDate()} ${mon[d.getMonth()]}`;
-};
+const todayLabel = () =>
+  "Today · " +
+  new Intl.DateTimeFormat("en-GB", { timeZone: "Africa/Harare", weekday: "short", day: "numeric", month: "short" }).format(new Date());
 
 const TIME_SLOTS = Array.from({ length: 19 }, (_, i) => {
   const h = 9 + Math.floor(i / 2);
@@ -60,14 +57,6 @@ export function Diary({
     <>
       <div className="diary-daybar">
         <div className="d">{todayLabel()}</div>
-        <div className="arrows">
-          <button className="day-arrow" aria-label="Previous day">
-            <Icons.ChevL size={16} />
-          </button>
-          <button className="day-arrow" aria-label="Next day">
-            <Icons.ChevR size={16} />
-          </button>
-        </div>
       </div>
 
       <div className="room-tabs">
@@ -254,7 +243,7 @@ function BookingSheet({
           <select value={time} onChange={(e) => setTime(e.target.value)}>
             {TIME_SLOTS.map((t) => (
               <option key={t} value={t}>
-                {fmtTime(`2000-01-01T${t}:00`)}
+                {fmtTime(`2000-01-01T${t}:00+02:00`)}
               </option>
             ))}
           </select>
@@ -369,8 +358,10 @@ function ApptSheet({
               <label>Amount charged</label>
               <input
                 type="number"
+                min={0}
+                inputMode="decimal"
                 value={amount}
-                onChange={(e) => setAmount(Number(e.target.value))}
+                onChange={(e) => setAmount(Math.max(0, Number(e.target.value) || 0))}
               />
             </div>
             <div className="field">
@@ -409,7 +400,7 @@ function ApptSheet({
               <select value={rTime} onChange={(e) => setRTime(e.target.value)}>
                 {TIME_SLOTS.map((t) => (
                   <option key={t} value={t}>
-                    {fmtTime(`2000-01-01T${t}:00`)}
+                    {fmtTime(`2000-01-01T${t}:00+02:00`)}
                   </option>
                 ))}
               </select>

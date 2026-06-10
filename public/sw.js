@@ -1,9 +1,10 @@
 /* Craig's Saloon service worker — offline resilience for patchy connectivity.
-   - navigations: network-first, fall back to a cached offline page
+   - navigations: network-first; on success cache a copy; offline → serve the last
+     cached page for that route (so the app actually works offline), else /offline.html
    - static assets: cache-first
    Same-origin GET only; never touches Supabase / API calls. */
-const CACHE = "craigs-v1";
-const PRECACHE = ["/offline.html", "/icon.svg", "/manifest.webmanifest"];
+const CACHE = "craigs-v2";
+const PRECACHE = ["/offline.html", "/icon.svg"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -27,13 +28,27 @@ self.addEventListener("fetch", (event) => {
   const { request } = event;
   if (request.method !== "GET") return;
   const url = new URL(request.url);
-  if (url.origin !== self.location.origin) return; // leave Supabase/3rd-party alone
+  if (url.origin !== self.location.origin) return; // leave Supabase / 3rd-party alone
 
+  // navigations: network-first, cache the result, fall back to the cached route offline
   if (request.mode === "navigate") {
-    event.respondWith(fetch(request).catch(() => caches.match("/offline.html")));
+    event.respondWith(
+      fetch(request)
+        .then((res) => {
+          if (res && res.ok) {
+            const copy = res.clone();
+            caches.open(CACHE).then((c) => c.put(request, copy));
+          }
+          return res;
+        })
+        .catch(() =>
+          caches.match(request).then((cached) => cached || caches.match("/offline.html"))
+        )
+    );
     return;
   }
 
+  // hashed static assets: cache-first
   if (url.pathname.startsWith("/_next/static") || url.pathname === "/icon.svg") {
     event.respondWith(
       caches.match(request).then(

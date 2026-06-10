@@ -29,7 +29,19 @@ export function ClientsList({ rows }: { rows: ClientListRow[] }) {
       </div>
       <div className="cl-list">
         {filtered.map((cl) => (
-          <div className="cl-li" key={cl.id} onClick={() => router.push(`/clients/${cl.id}`)}>
+          <div
+            className="cl-li"
+            key={cl.id}
+            role="button"
+            tabIndex={0}
+            onClick={() => router.push(`/clients/${cl.id}`)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                router.push(`/clients/${cl.id}`);
+              }
+            }}
+          >
             <div className={"av " + avatarClass(cl.id)}>{initials(cl.name)}</div>
             <div style={{ flex: 1 }}>
               <div className="nm">{cl.name}</div>

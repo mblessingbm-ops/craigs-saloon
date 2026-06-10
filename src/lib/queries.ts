@@ -17,9 +17,12 @@ const harareHour = (iso: string) =>
   );
 
 
-const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+// all display dates render in the studio's timezone (Africa/Harare), so labels
+// never show the wrong day near midnight or shift for an out-of-zone viewer
 const fmtDay = (d: Date) =>
-  `${d.getUTCDate()} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()]}`;
+  new Intl.DateTimeFormat("en-GB", { timeZone: STUDIO_TZ, day: "numeric", month: "short" }).format(d);
+const fmtMonthYear = (d: Date) =>
+  new Intl.DateTimeFormat("en-US", { timeZone: STUDIO_TZ, month: "long", year: "numeric" }).format(d);
 
 export async function getDashboard(): Promise<DashboardData> {
   const supabase = await createClient();
@@ -156,7 +159,7 @@ export async function getDashboard(): Promise<DashboardData> {
       txns,
       { start: monthStart, end: monthEnd },
       { start: prevMonthStart, end: monthStart },
-      { label: "This Month", sub: `${MONTHS[now.getUTCMonth()]} ${now.getUTCFullYear()}`, deltaLabel: "vs last month" },
+      { label: "This Month", sub: fmtMonthYear(now), deltaLabel: "vs last month" },
       newClientsIn(monthStart, monthEnd),
       { values: weekBuckets, labels: weekBucketLabels }
     ),
@@ -240,8 +243,7 @@ export async function getDiary(): Promise<{ rooms: DiaryRoom[]; appts: DiaryAppt
    ============================================================ */
 const fmtDate = (iso: string | null) => {
   if (!iso) return "—";
-  const d = new Date(iso);
-  return `${d.getUTCDate()} ${["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][d.getUTCMonth()]} ${d.getUTCFullYear()}`;
+  return new Intl.DateTimeFormat("en-GB", { timeZone: STUDIO_TZ, day: "numeric", month: "short", year: "numeric" }).format(new Date(iso));
 };
 
 export interface ClientListRow {
@@ -419,12 +421,8 @@ export async function getBookingOptions(): Promise<BookingOptions> {
 /* ============================================================
    RECONCILIATION — shared date helper
    ============================================================ */
-const todayLabelLong = () => {
-  const d = new Date();
-  const days = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-  const mon = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-  return `${days[d.getUTCDay()]} ${d.getUTCDate()} ${mon[d.getUTCMonth()]} ${d.getUTCFullYear()}`;
-};
+const todayLabelLong = () =>
+  new Intl.DateTimeFormat("en-GB", { timeZone: STUDIO_TZ, weekday: "short", day: "numeric", month: "short", year: "numeric" }).format(new Date());
 
 /* ============================================================
    STATION-LEVEL RECONCILIATION (Phase 1)

@@ -193,7 +193,9 @@ export async function updateAppointmentStatus(
 
   const patch: TablesUpdate<"appointments"> = { status };
   if (status === "completed") {
-    patch.amount_charged = extra?.amount ?? 0;
+    // clamp: takings are never negative; cap absurd values (guards reconciliation/revenue)
+    const amt = Number(extra?.amount);
+    patch.amount_charged = Number.isFinite(amt) ? Math.min(Math.max(amt, 0), 100000) : 0;
     patch.payment_method = extra?.payment ?? "cash";
     if (extra?.notes) patch.notes = extra.notes;
   }
@@ -481,12 +483,17 @@ export async function reopenStationDay(locationId: string): Promise<{ error?: st
   const allowed = me?.role === "owner" || (me?.role === "admin" && me?.location_id === locationId);
   if (!allowed) return { error: "You can only reopen your own saloon." };
   const tKey = localDateKey();
-  const { error } = await supabase
+  const { data: parent, error } = await supabase
     .from("daily_reconciliation")
     .update({ confirmed_at: null })
     .eq("location_id", locationId)
-    .eq("business_date", tKey);
+    .eq("business_date", tKey)
+    .select("id")
+    .maybeSingle();
   if (error) return { error: error.message };
+  // clear the saved station lines so re-counting starts fresh against the
+  // (possibly changed) system totals — otherwise stale till counts persist.
+  if (parent) await supabase.from("reconciliation_lines").delete().eq("reconciliation_id", parent.id);
   await logAudit(supabase, user.id, "reopen_day", "daily_reconciliation", locationId, { business_date: tKey });
   revalidatePath("/close");
   return {};

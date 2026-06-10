@@ -51,12 +51,16 @@ export const PAYMENT_LABEL: Record<string, string> = {
   mobile_money: "EcoCash",
 };
 
-/** Format an ISO timestamp as h:mm am/pm. */
+/** Format an ISO timestamp as h:mm am/pm in the studio's timezone (Africa/Harare),
+ *  so times read correctly regardless of the viewer's device timezone. */
 export function fmtTime(iso: string): string {
-  const d = new Date(iso);
-  let h = d.getHours();
-  const m = d.getMinutes();
-  const ap = h < 12 ? "am" : "pm";
-  h = h % 12 || 12;
-  return `${h}:${String(m).padStart(2, "0")}${ap}`;
+  return new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Africa/Harare",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  })
+    .format(new Date(iso))
+    .replace(/\s/g, "")
+    .toLowerCase();
 }
