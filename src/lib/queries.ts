@@ -248,11 +248,18 @@ const fmtDate = (iso: string | null) => {
   return new Intl.DateTimeFormat("en-GB", { timeZone: STUDIO_TZ, day: "numeric", month: "short", year: "numeric" }).format(new Date(iso));
 };
 
+// A returning client is "due for a visit" once this many days have passed since
+// their last appointment — the window where a gentle nudge wins re-bookings.
+export const REENGAGE_AFTER_DAYS = 35;
+
 export interface ClientListRow {
   id: string;
   name: string;
+  phone: string | null;
   visits: number;
   lastVisit: string | null;
+  daysSince: number | null;
+  due: boolean;
   hasNotes: boolean;
 }
 
@@ -260,16 +267,40 @@ export async function getClients(): Promise<ClientListRow[]> {
   const supabase = await createClient();
   const { data } = await supabase
     .from("clients")
-    .select("id, name, total_visits, last_visit_date, skin_notes")
+    .select("id, name, phone_number, total_visits, last_visit_date, skin_notes")
     .order("total_visits", { ascending: false });
 
-  return (data ?? []).map((c) => ({
-    id: c.id,
-    name: c.name ?? "Unnamed",
-    visits: c.total_visits,
-    lastVisit: c.last_visit_date ? fmtDate(c.last_visit_date) : null,
-    hasNotes: !!c.skin_notes,
-  }));
+  const today = localDateKey();
+  const daysBetween = (key: string) =>
+    Math.round((dayStart(today).getTime() - dayStart(key).getTime()) / 86_400_000);
+
+  return (data ?? []).map((c) => {
+    const daysSince = c.last_visit_date ? daysBetween(c.last_visit_date.slice(0, 10)) : null;
+    return {
+      id: c.id,
+      name: c.name ?? "Unnamed",
+      phone: c.phone_number ?? null,
+      visits: c.total_visits,
+      lastVisit: c.last_visit_date ? fmtDate(c.last_visit_date) : null,
+      daysSince,
+      // an established client (≥1 visit) we haven't seen in a while
+      due: c.total_visits >= 1 && daysSince !== null && daysSince >= REENGAGE_AFTER_DAYS,
+      hasNotes: !!c.skin_notes,
+    };
+  });
+}
+
+/** Count of established clients who are due for a re-engagement nudge — drives
+ *  the dashboard prompt. Cheap head/count query (no rows fetched). */
+export async function getReengageCount(): Promise<number> {
+  const supabase = await createClient();
+  const cutoff = addDaysKey(localDateKey(), -REENGAGE_AFTER_DAYS);
+  const { count } = await supabase
+    .from("clients")
+    .select("id", { count: "exact", head: true })
+    .gte("total_visits", 1)
+    .lte("last_visit_date", cutoff);
+  return count ?? 0;
 }
 
 export interface ClientCardData {

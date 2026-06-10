@@ -1355,6 +1355,29 @@ body[data-theme="dark"] {
   margin-top: 1px;
 }
 
+/* re-engagement (lapsed-client) filter + WhatsApp nudge */
+.cl-filter {
+  display: flex;
+  gap: 7px;
+  margin-top: 12px;
+}
+.cl-wa {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+  font-size: 12px;
+  font-weight: 600;
+  text-decoration: none;
+  color: #fff;
+  background: #25955a;
+  border-radius: 999px;
+  padding: 6px 11px;
+}
+.cl-wa:active {
+  filter: brightness(0.94);
+}
+
 /* alert / sparkle banner */
 .alert-banner {
   display: flex;
@@ -1373,6 +1396,43 @@ body[data-theme="dark"] {
 }
 .alert-banner .tx b {
   color: var(--warn);
+}
+
+/* re-engagement prompt on the dashboard */
+.reengage-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-decoration: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 13px var(--cardpad);
+  margin-top: 14px;
+}
+.reengage-ico {
+  width: 34px;
+  height: 34px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  background: #25955a;
+}
+.reengage-t {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+.reengage-s {
+  font-size: 12px;
+  color: var(--ink-soft);
+  margin-top: 1px;
+}
+.reengage-card:active {
+  background: var(--surface-3);
 }
 
 /* ============================================================

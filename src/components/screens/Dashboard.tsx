@@ -16,7 +16,15 @@ const payColors: Record<string, string> = {
   mobile: "#6d9077",
 };
 
-export function Dashboard({ periods, role }: { periods: DashboardData; role: string | null }) {
+export function Dashboard({
+  periods,
+  role,
+  dueClients = 0,
+}: {
+  periods: DashboardData;
+  role: string | null;
+  dueClients?: number;
+}) {
   const isManager = role === "owner" || role === "admin";
   const isOwner = role === "owner";
   const [period, setPeriod] = useState<"today" | "week" | "month">("today");
@@ -106,6 +114,22 @@ export function Dashboard({ periods, role }: { periods: DashboardData; role: str
           <div className="k">New clients</div>
         </div>
       </div>
+
+      {/* re-engagement prompt — turns lapsed regulars into re-bookings */}
+      {isManager && dueClients > 0 && (
+        <Link href="/clients?filter=due" className="reengage-card">
+          <span className="reengage-ico">
+            <Icons.Chat size={18} />
+          </span>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div className="reengage-t">
+              {dueClients} client{dueClients === 1 ? "" : "s"} due for a visit
+            </div>
+            <div className="reengage-s">Send a friendly nudge to win the re-booking</div>
+          </div>
+          <Icons.Chevron size={16} style={{ color: "var(--ink-faint)" }} />
+        </Link>
+      )}
 
       {/* by location — the franchise view (owner sees all 4; admin sees their own; hidden for technicians) */}
       {isManager && d.byLocation.length > 0 && (
