@@ -36,7 +36,11 @@ export function Sheet({ onClose, children }: { onClose: () => void; children: Re
     };
 
     document.addEventListener("keydown", onKey);
-    focusables()[0]?.focus();
+    // Focus the dialog itself (not the first form field) so opening doesn't
+    // scroll a deep <select> into view — which would push the title off the top
+    // and force the user to scroll up. Keep the sheet pinned to its top.
+    ref.current?.focus({ preventScroll: true });
+    if (ref.current) ref.current.scrollTop = 0;
     return () => {
       document.removeEventListener("keydown", onKey);
       prevFocus?.focus?.();
@@ -45,7 +49,7 @@ export function Sheet({ onClose, children }: { onClose: () => void; children: Re
 
   return (
     <div className="sheet-overlay" onClick={onClose}>
-      <div className="sheet" role="dialog" aria-modal="true" ref={ref} onClick={(e) => e.stopPropagation()}>
+      <div className="sheet" role="dialog" aria-modal="true" tabIndex={-1} ref={ref} onClick={(e) => e.stopPropagation()}>
         <div className="sheet-grip" />
         {children}
       </div>
